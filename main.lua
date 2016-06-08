@@ -2,16 +2,18 @@
 require("player")
 
 GRAVITATIONAL_CONSTANT = 6.674 * 10^-11
-MIN_DISTANCE = 30
-GEN_DISTANCE = 10^3
-RADIUS = 3 -- Controls the size of the bubbles
-SPEED = 100 -- Controls the initial speed of the bubbles
+MIN_DISTANCE = 10^4
+GEN_DISTANCE = 10^6
+RADIUS = 300 -- Controls the size of the bubbles
+SPEED = MIN_DISTANCE * 3 -- Controls the initial speed of the bubbles
+TRAITS = 3 -- Number of traits each bubble has
 
 function love.load()
 	math.randomseed(os.time())
 
 	pause = false
 	scale = 1
+	bubbleScale = scale
 	timeScale = 1
 
 	pos = {x = 0, y = 0} -- User's global position
@@ -20,22 +22,20 @@ function love.load()
 	world = {} -- Contains the WHOLE WORLD
 
 	window_pos = {x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() / 2}
-
-	tmp_debug = true
 end
 
 function love.update(dt)
 	if love.keyboard.isDown("left", "a") then
-		pos.x = pos.x - speed * dt
+		pos.x = pos.x - speed * dt / scale
 	end
 	if love.keyboard.isDown("right","d") then
-		pos.x = pos.x + speed * dt
+		pos.x = pos.x + speed * dt / scale
 	end
 	if love.keyboard.isDown("up","w") then
-		pos.y = pos.y + speed * dt
+		pos.y = pos.y + speed * dt / scale
 	end
 	if love.keyboard.isDown("down","s") then
-		pos.y = pos.y - speed * dt
+		pos.y = pos.y - speed * dt / scale
 	end
 
 	if pause then
@@ -58,10 +58,25 @@ function love.update(dt)
 			end
 			if createBubble then
 				bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
-				bubble.mass = math.random(10^10) + 10^17
+				bubble.traits = {}
+				trait_iterator = 0
+				while trait_iterator <= TRAITS do
+					local mass_type
+					local random_number = math.random(3)
+					if random_number == 1 then
+						mass_type = 1
+					elseif random_number == 2 then
+						mass_type = -1
+					else
+						mass_type = 0
+					end
+					local mass = (math.random(10^10) + 10^17) * mass_type
+					table.insert(bubble.traits, mass)
+					trait_iterator = trait_iterator + 1
+				end
 				bubble.velocity = {
-					x = math.random(SPEED / 2) - SPEED / 2,
-					y = math.random(SPEED / 2) - SPEED / 2
+					x = math.random(SPEED) - SPEED / 2,
+					y = math.random(SPEED) - SPEED / 2
 				}
 				bubble.active = true
 				table.insert(world, bubble)
@@ -76,12 +91,14 @@ function love.update(dt)
 						local dy = anotherBubble.pos.y - bubble.pos.y
 
 						local distance = hypot(dx, dy)
-						if collision(distance) then
+						if collision(distance - RADIUS / 2) then
 							bubble.active = false
 							anotherBubble.active = false
 						else
-							acceleration.x = acceleration.x + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dx / distance^3
-							acceleration.y = acceleration.y + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dy / distance^3
+							for k, trait_mass in ipairs(bubble.traits) do
+								acceleration.x = acceleration.x + GRAVITATIONAL_CONSTANT * trait_mass * dx / distance^3
+								acceleration.y = acceleration.y + GRAVITATIONAL_CONSTANT * trait_mass * dy / distance^3
+							end
 						end
 					end
 				end
@@ -106,7 +123,7 @@ function love.draw()
 		y = y * scale + window_pos.y
 
 		love.graphics.setColor(bubble.color)
-		love.graphics.circle("fill", x, y, RADIUS)
+		love.graphics.circle("fill", x, y, RADIUS * bubbleScale)
 	end
 
 	love.graphics.setColor(255, 255, 255)
@@ -142,12 +159,16 @@ function love.keypressed(key)
 		end
 	elseif key == "z" then
 		scale = 1
+		bubbleScale = scale
 	elseif key == "x" then
-		scale = 0.5
-	elseif key == "c" then
-		scale = 0.25
-	elseif key == "v" then
 		scale = 0.1
+		bubbleScale = scale
+	elseif key == "c" then
+		scale = 0.01
+		bubbleScale = scale
+	elseif key == "v" then
+		scale = 0.001
+		bubbleScale = 0.01
 
 	elseif key == "b" then
 		timeScale = 1
