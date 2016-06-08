@@ -2,8 +2,8 @@
 require("player")
 
 GRAVITATIONAL_CONSTANT = 6.674 * 10^-11
-MIN_DISTANCE = 10
-GEN_DISTANCE = 10^4
+MIN_DISTANCE = 30
+GEN_DISTANCE = 10^3
 RADIUS = 3 -- Controls the size of the bubbles
 SPEED = 100 -- Controls the initial speed of the bubbles
 
@@ -48,42 +48,51 @@ function love.update(dt)
 		local bubble = {}
 			local createBubble = true
 			bubble.pos = {
-				x = pos.x + math.random(GEN_DISTANCE / 2) - GEN_DISTANCE / 2,
-				y = pos.y + math.random(GEN_DISTANCE / 2) - GEN_DISTANCE / 2
+				x = pos.x + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2,
+				y = pos.y + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2
 			}
 			for i, otherBubble in ipairs(world) do
-				if hypot(pos.x - bubble.pos.x, pos.y - bubble.pos.y) < MIN_DISTANCE
-				or hypot(otherBubble.pos.x - bubble.pos.x, pos.y - otherBubble.pos.y - bubble.pos.y) < MIN_DISTANCE then
+				if hypot(otherBubble.pos.x - bubble.pos.x, otherBubble.pos.y - bubble.pos.y) < MIN_DISTANCE then
 					createBubble = false
 				end
 			end
 			if createBubble then
 				bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
-				bubble.mass = math.random(10^10) + 10^10
+				bubble.mass = math.random(10^10) + 10^17
 				bubble.velocity = {
 					x = math.random(SPEED / 2) - SPEED / 2,
 					y = math.random(SPEED / 2) - SPEED / 2
 				}
+				bubble.active = true
 				table.insert(world, bubble)
 			end
---[[
-		for i, bubble in ipairs(world) do
-			local acceleration = {x = 0, y = 0}
-			for j, anotherBubble in ipairs(world) do
-				local dx = anotherBubble.pos.x - bubble.pos.x
-				local dy = anotherBubble.pos.y - bubble.pos.y
 
-				local distance = hypot(dx, dy)
-				acceleration.x = acceleration.x + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dx / distance^3
-				acceleration.y = acceleration.y + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dy / distance^3
-			end
+		for i, bubble in ipairs(world) do
+			if bubble.active then
+				local acceleration = {x = 0, y = 0}
+				for j, anotherBubble in ipairs(world) do
+					if i ~= j then
+						local dx = anotherBubble.pos.x - bubble.pos.x
+						local dy = anotherBubble.pos.y - bubble.pos.y
+
+						local distance = hypot(dx, dy)
+						if collision(distance) then
+							bubble.active = false
+							anotherBubble.active = false
+						else
+							acceleration.x = acceleration.x + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dx / distance^3
+							acceleration.y = acceleration.y + GRAVITATIONAL_CONSTANT * anotherBubble.mass * dy / distance^3
+						end
+					end
+				end
 				bubble.pos.x = bubble.pos.x + bubble.velocity.x * dt + acceleration.x * dt^2 / 2
 				bubble.pos.y = bubble.pos.y + bubble.velocity.y * dt + acceleration.y * dt^2 / 2
 
 				bubble.velocity.x = bubble.velocity.x + acceleration.x * dt^2
 				bubble.velocity.y = bubble.velocity.y + acceleration.y * dt^2
+			end
 		end
---]]
+
 		count = count + 1
 	end
 end
@@ -93,21 +102,15 @@ function love.draw()
 
 	for i, bubble in ipairs(world) do
 		local x, y = global_to_local(bubble.pos.x, bubble.pos.y, pos.x, pos.y)
-		x = x + window_pos.x
-		y = y + window_pos.y
+		x = x * scale + window_pos.x
+		y = y * scale + window_pos.y
 
-		if tmp_debug then
-			print()
-			tmp_debug = false
-		end
-
---		love.graphics.setColor(bubble.color)
-		love.graphics.setColor({255,255,255})
+		love.graphics.setColor(bubble.color)
 		love.graphics.circle("fill", x, y, RADIUS)
 	end
 
 	love.graphics.setColor(255, 255, 255)
-	love.graphics.circle("fill", window_pos.x, window_pos.y, 10, 3)
+	love.graphics.circle("fill", window_pos.x, window_pos.y, 3, 4)
 	love.graphics.print("Position: x = " .. math.floor(pos.x)
 		.. ", y = " .. math.floor(pos.y)
 		.. ".\t\t\tNumber of bubbles: " .. #world, 0, 0)
