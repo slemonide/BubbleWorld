@@ -1,12 +1,15 @@
 -- Asteroids game. Player travels on the field & collects coins. OK?
 require("player")
 
-GRAVITATIONAL_CONSTANT = 6.674 * 10^-11
-MIN_DISTANCE = 10^4
-GEN_DISTANCE = 10^6
+K_CONSTANT = 6.674 * 10^-11
+MIN_DISTANCE = 3 * 10^3
+GEN_DISTANCE = 5 * 10^4
 RADIUS = 300 -- Controls the size of the bubbles
 SPEED = MIN_DISTANCE * 3 -- Controls the initial speed of the bubbles
 TRAITS = 3 -- Number of traits each bubble has
+ITER_TIME = 10^-2 -- [seconds] Controls the precision of the simulation. The smaller the number, the more precise simulation is.
+CHARGE_MIN = 10
+CHARGE_MAX_MINUS_MIN = 10
 
 function love.load()
 	math.randomseed(os.time())
@@ -16,10 +19,19 @@ function love.load()
 	bubbleScale = scale
 	timeScale = 1
 
+	timeInterval = 10^(-3) -- Time interval used to update the positions of the bubbles
+
+	autoExplore = false
+	exploreTurn = true -- This is used by autoExplore
+	exploreTimeMin = 6000 -- This is in seconds
+	exploreTime = 0
+
 	pos = {x = 0, y = 0} -- User's global position
 	speed = 100 -- Speed with which user can move
 
-	world = {} -- Contains the WHOLE WORLD
+	objects = {} -- Contains all of the objects
+
+	world = love.physics.newWorld(0, 0, true) -- Create a world
 
 	window_pos = {x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() / 2}
 end
@@ -38,6 +50,21 @@ function love.update(dt)
 		pos.y = pos.y - speed * dt / scale
 	end
 
+	if autoExplore then
+		if exploreTime >= exploreTimeMin then
+			if exploreTurn then
+				pos.x = pos.x + GEN_DISTANCE
+				exploreTurn = false
+			else
+				pos.y = pos.y + GEN_DISTANCE
+				exploreTurn = true
+			end
+			exploreTime = 0
+		else
+			exploreTime = exploreTime + dt
+		end
+	end
+
 	if pause then
 		return
 	end
@@ -51,62 +78,64 @@ function love.update(dt)
 				x = pos.x + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2,
 				y = pos.y + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2
 			}
-			for i, otherBubble in ipairs(world) do
+			for i, otherBubble in ipairs(objects) do
 				if hypot(otherBubble.pos.x - bubble.pos.x, otherBubble.pos.y - bubble.pos.y) < MIN_DISTANCE then
 					createBubble = false
 				end
 			end
 			if createBubble then
-				bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
+				-- bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
 				bubble.traits = {}
 				trait_iterator = 0
 				while trait_iterator <= TRAITS do
-					local mass_type
+					local charge_type
 					local random_number = math.random(3)
 					if random_number == 1 then
-						mass_type = 1
+						charge_type = 1
 					elseif random_number == 2 then
-						mass_type = -1
+						charge_type = -1
 					else
-						mass_type = 0
+						charge_type = 0
 					end
-					local mass = (math.random(10^10) + 10^17) * mass_type
-					table.insert(bubble.traits, mass)
+					local charge = (math.random(CHARGE_MAX_MINUS_MIN) + CHARGE_MIN) * charge_type
+					table.insert(bubble.traits, charge)
 					trait_iterator = trait_iterator + 1
 				end
+				-- Make the color a function of trairs
+				bubble.color = {bubble.traits[1] % 100 + 100, bubble.traits[2] % 100 + 100, bubble.traits[2] % 100 + 100}
 				bubble.velocity = {
 					x = math.random(SPEED) - SPEED / 2,
 					y = math.random(SPEED) - SPEED / 2
 				}
 				bubble.active = true
-				table.insert(world, bubble)
+				table.insert(objects, bubble)
 			end
 
-		for i, bubble in ipairs(world) do
+		for i, bubble in ipairs(objects) do
 			if bubble.active then
 				local acceleration = {x = 0, y = 0}
-				for j, anotherBubble in ipairs(world) do
+				for j, anotherBubble in ipairs(objects) do
 					if i ~= j then
 						local dx = anotherBubble.pos.x - bubble.pos.x
 						local dy = anotherBubble.pos.y - bubble.pos.y
 
 						local distance = hypot(dx, dy)
-						if collision(distance - RADIUS / 2) then
+						if collision(distance + RADIUS / 5) then
 							bubble.active = false
 							anotherBubble.active = false
 						else
 							for k, trait_mass in ipairs(bubble.traits) do
-								acceleration.x = acceleration.x + GRAVITATIONAL_CONSTANT * trait_mass * dx / distance^3
-								acceleration.y = acceleration.y + GRAVITATIONAL_CONSTANT * trait_mass * dy / distance^3
+								acceleration.x = acceleration.x + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dx / distance^3
+								acceleration.y = acceleration.y + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dy / distance^3
 							end
 						end
 					end
 				end
-				bubble.pos.x = bubble.pos.x + bubble.velocity.x * dt + acceleration.x * dt^2 / 2
-				bubble.pos.y = bubble.pos.y + bubble.velocity.y * dt + acceleration.y * dt^2 / 2
+				bubble.pos.x = bubble.pos.x + bubble.velocity.x * ITER_TIME + acceleration.x * ITER_TIME^2 / 2
+				bubble.pos.y = bubble.pos.y + bubble.velocity.y * ITER_TIME + acceleration.y * ITER_TIME^2 / 2
 
-				bubble.velocity.x = bubble.velocity.x + acceleration.x * dt^2
-				bubble.velocity.y = bubble.velocity.y + acceleration.y * dt^2
+				bubble.velocity.x = bubble.velocity.x + acceleration.x * ITER_TIME
+				bubble.velocity.y = bubble.velocity.y + acceleration.y * ITER_TIME
 			end
 		end
 
@@ -117,7 +146,7 @@ end
 function love.draw()
 	window_pos = {x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() / 2}
 
-	for i, bubble in ipairs(world) do
+	for i, bubble in ipairs(objects) do
 		local x, y = global_to_local(bubble.pos.x, bubble.pos.y, pos.x, pos.y)
 		x = x * scale + window_pos.x
 		y = y * scale + window_pos.y
@@ -130,15 +159,18 @@ function love.draw()
 	love.graphics.circle("fill", window_pos.x, window_pos.y, 3, 4)
 	love.graphics.print("Position: x = " .. math.floor(pos.x)
 		.. ", y = " .. math.floor(pos.y)
-		.. ".\t\t\tNumber of bubbles: " .. #world, 0, 0)
+		.. ".\t\t\tNumber of bubbles: " .. #objects, 0, 0)
 
 	love.graphics.setColor(0, 255, 255)
 	if pause then
 		love.graphics.print("PAUSED", love.graphics.getWidth() - 60, love.graphics.getHeight() - 20)
 	end
+	if autoExplore then
+		love.graphics.print("EXPLORING", love.graphics.getWidth() - 80, 20)
+	end
 
-	love.graphics.print("ZOOM: " .. 1/scale .. "x", love.graphics.getWidth()/2, love.graphics.getHeight() - 40)
-	love.graphics.print("TIME SPEED: " .. timeScale .. "x", love.graphics.getWidth()/2, love.graphics.getHeight() - 20)
+	love.graphics.print("ZOOM: " .. 1/scale .. "x", 5, love.graphics.getHeight() - 40)
+	love.graphics.print("TIME SPEED: " .. timeScale .. "x", 5, love.graphics.getHeight() - 20)
 end
 
 function love.keypressed(key)
@@ -171,10 +203,20 @@ function love.keypressed(key)
 		bubbleScale = 0.01
 
 	elseif key == "b" then
-		timeScale = 1
+		timeScale = 2
 	elseif key == "n" then
 		timeScale = 10
 	elseif key == "m" then
 		timeScale = 20
+
+	elseif key == "e" then
+		if autoExplore then
+			autoExplore = false
+		else
+			autoExplore = true
+		end
+
+	elseif key == "r" then
+		pos = {x = 0, y = 0}
 	end
 end
