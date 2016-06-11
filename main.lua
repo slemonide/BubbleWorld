@@ -1,15 +1,18 @@
 -- Asteroids game. Player travels on the field & collects coins. OK?
 require("player")
+require("controls")
 
-K_CONSTANT = 6.674 * 10^-11
+K_CONSTANT = 6.674 * 10^-11 * 10^11
 MIN_DISTANCE = 3 * 10^3
-GEN_DISTANCE = 5 * 10^4
+GEN_DISTANCE = 10^5
 RADIUS = 300 -- Controls the size of the bubbles
-SPEED = MIN_DISTANCE * 3 -- Controls the initial speed of the bubbles
+DENSITY = 5
+SPEED = MIN_DISTANCE * 10^2 -- Controls the initial speed of the bubbles
 TRAITS = 3 -- Number of traits each bubble has
 ITER_TIME = 10^-2 -- [seconds] Controls the precision of the simulation. The smaller the number, the more precise simulation is.
-CHARGE_MIN = 10
-CHARGE_MAX_MINUS_MIN = 10
+CHARGE_MIN = 10^10
+CHARGE_MAX_MINUS_MIN = 10^10
+MIN_COLLISIONS = 200 -- Number of collisions before bubbles are connected by a poligon
 
 function love.load()
 	math.randomseed(os.time())
@@ -29,7 +32,7 @@ function love.load()
 	pos = {x = 0, y = 0} -- User's global position
 	speed = 100 -- Speed with which user can move
 
-	objects = {} -- Contains all of the objects
+	objects = {bubbles = {}, polygons = {}} -- Contains all of the objects
 
 	world = love.physics.newWorld(0, 0, true) -- Create a world
 
@@ -37,18 +40,9 @@ function love.load()
 end
 
 function love.update(dt)
-	if love.keyboard.isDown("left", "a") then
-		pos.x = pos.x - speed * dt / scale
-	end
-	if love.keyboard.isDown("right","d") then
-		pos.x = pos.x + speed * dt / scale
-	end
-	if love.keyboard.isDown("up","w") then
-		pos.y = pos.y + speed * dt / scale
-	end
-	if love.keyboard.isDown("down","s") then
-		pos.y = pos.y - speed * dt / scale
-	end
+	world:update(dt)
+
+	continuous_controls(dt)
 
 	if autoExplore then
 		if exploreTime >= exploreTimeMin then
@@ -78,13 +72,13 @@ function love.update(dt)
 				x = pos.x + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2,
 				y = pos.y + math.random(GEN_DISTANCE) - GEN_DISTANCE / 2
 			}
-			for i, otherBubble in ipairs(objects) do
+			for i, otherBubble in ipairs(objects.bubbles) do
 				if hypot(otherBubble.pos.x - bubble.pos.x, otherBubble.pos.y - bubble.pos.y) < MIN_DISTANCE then
 					createBubble = false
 				end
 			end
 			if createBubble then
-				-- bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
+				bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
 				bubble.traits = {}
 				trait_iterator = 0
 				while trait_iterator <= TRAITS do
@@ -101,41 +95,63 @@ function love.update(dt)
 					table.insert(bubble.traits, charge)
 					trait_iterator = trait_iterator + 1
 				end
-				-- Make the color a function of trairs
-				bubble.color = {bubble.traits[1] % 100 + 100, bubble.traits[2] % 100 + 100, bubble.traits[2] % 100 + 100}
 				bubble.velocity = {
 					x = math.random(SPEED) - SPEED / 2,
 					y = math.random(SPEED) - SPEED / 2
 				}
+				bubble.collisions = 0
+
+				bubble.body = love.physics.newBody(world, bubble.pos.x, bubble.pos.y, "dynamic")
+				bubble.shape = love.physics.newCircleShape(RADIUS)
+				bubble.fixture = love.physics.newFixture(bubble.body, bubble.shape, DENSITY)
+				bubble.body:setLinearVelocity(bubble.velocity.x, bubble.velocity.y)
+
 				bubble.active = true
-				table.insert(objects, bubble)
+				table.insert(objects.bubbles, bubble)
 			end
 
-		for i, bubble in ipairs(objects) do
+		for i, bubble in ipairs(objects.bubbles) do
 			if bubble.active then
 				local acceleration = {x = 0, y = 0}
-				for j, anotherBubble in ipairs(objects) do
+				for j, anotherBubble in ipairs(objects.bubbles) do
 					if i ~= j then
 						local dx = anotherBubble.pos.x - bubble.pos.x
 						local dy = anotherBubble.pos.y - bubble.pos.y
 
 						local distance = hypot(dx, dy)
-						if collision(distance + RADIUS / 5) then
-							bubble.active = false
-							anotherBubble.active = false
+						if collision(distance)
+						and bubble.collisions > MIN_COLLISIONS
+						and anotherBubble.collisions > MIN_COLLISIONS then
+							local polygon_num --= #objects.polygons
+							if anotherBubble.polygon then
+								polygon_num = anotherBubble.polygon
+								table.insert(objects.polygons[polygon_num], bubble)
+								if bubble.polygon then
+									--remove_item(objects.polygons[bubble.polygon], bubble)
+								end
+								bubble.polygon = polygon_num
+							else -- If not, create new polygon
+								polygon_num = #objects.polygons + 1
+								objects.polygons[polygon_num] = {}
+								table.insert(objects.polygons[polygon_num], bubble)
+								table.insert(objects.polygons[polygon_num], anotherBubble)
+								bubble.polygon = polygon_num
+								anotherBubble.polygon = polygon_num
+							end
 						else
 							for k, trait_mass in ipairs(bubble.traits) do
 								acceleration.x = acceleration.x + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dx / distance^3
 								acceleration.y = acceleration.y + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dy / distance^3
 							end
+							if collision(distance) then
+								bubble.collisions = bubble.collisions + 1
+								anotherBubble.collisions = anotherBubble.collisions + 1
+							end
 						end
 					end
 				end
-				bubble.pos.x = bubble.pos.x + bubble.velocity.x * ITER_TIME + acceleration.x * ITER_TIME^2 / 2
-				bubble.pos.y = bubble.pos.y + bubble.velocity.y * ITER_TIME + acceleration.y * ITER_TIME^2 / 2
-
-				bubble.velocity.x = bubble.velocity.x + acceleration.x * ITER_TIME
-				bubble.velocity.y = bubble.velocity.y + acceleration.y * ITER_TIME
+				bubble.body:applyForce(acceleration.x, acceleration.y)
+				bubble.pos.x, bubble.pos.y = bubble.body:getPosition()
 			end
 		end
 
@@ -146,20 +162,33 @@ end
 function love.draw()
 	window_pos = {x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() / 2}
 
-	for i, bubble in ipairs(objects) do
-		local x, y = global_to_local(bubble.pos.x, bubble.pos.y, pos.x, pos.y)
-		x = x * scale + window_pos.x
-		y = y * scale + window_pos.y
+	for i, bubble in ipairs(objects.bubbles) do
+		local x = (bubble.body:getX() - pos.x) * scale + window_pos.x
+		local y = (bubble.body:getY() + pos.y) * scale + window_pos.y
 
 		love.graphics.setColor(bubble.color)
-		love.graphics.circle("fill", x, y, RADIUS * bubbleScale)
+		love.graphics.circle("fill", x, y, bubble.shape:getRadius() * scale)
+	end
+
+	for i, polygon in ipairs(objects.polygons) do
+		local vertices = {}
+		for j, body in ipairs(polygon) do
+			table.insert(vertices, (body.pos.x - pos.x) * scale + window_pos.x)
+			table.insert(vertices, (body.pos.y + pos.y) * scale + window_pos.y)
+		end
+
+		if #vertices > 6 then
+			love.graphics.setColor(255, 0, 0)
+			love.graphics.polygon("fill", vertices)
+		end
 	end
 
 	love.graphics.setColor(255, 255, 255)
 	love.graphics.circle("fill", window_pos.x, window_pos.y, 3, 4)
 	love.graphics.print("Position: x = " .. math.floor(pos.x)
 		.. ", y = " .. math.floor(pos.y)
-		.. ".\t\t\tNumber of bubbles: " .. #objects, 0, 0)
+		.. ".\t\t\tNumber of bubbles: " .. #objects.bubbles
+		.. ".\t\t\tNumber of polygons: " .. #objects.polygons, 0, 0)
 
 	love.graphics.setColor(0, 255, 255)
 	if pause then
@@ -171,52 +200,4 @@ function love.draw()
 
 	love.graphics.print("ZOOM: " .. 1/scale .. "x", 5, love.graphics.getHeight() - 40)
 	love.graphics.print("TIME SPEED: " .. timeScale .. "x", 5, love.graphics.getHeight() - 20)
-end
-
-function love.keypressed(key)
-	if key == "escape" or key == "q" then
-		love.event.quit()
-	elseif key == "p" or key == "space" then
-		if not pause then
-			pause = true
-		else
-			pause = false
-		end
-	elseif key == "f" then
-		local fullscreen = love.window.getFullscreen()
-		if not fullscreen then
-			love.window.setFullscreen(true)
-		else
-			love.window.setFullscreen(false)
-		end
-	elseif key == "z" then
-		scale = 1
-		bubbleScale = scale
-	elseif key == "x" then
-		scale = 0.1
-		bubbleScale = scale
-	elseif key == "c" then
-		scale = 0.01
-		bubbleScale = scale
-	elseif key == "v" then
-		scale = 0.001
-		bubbleScale = 0.01
-
-	elseif key == "b" then
-		timeScale = 2
-	elseif key == "n" then
-		timeScale = 10
-	elseif key == "m" then
-		timeScale = 20
-
-	elseif key == "e" then
-		if autoExplore then
-			autoExplore = false
-		else
-			autoExplore = true
-		end
-
-	elseif key == "r" then
-		pos = {x = 0, y = 0}
-	end
 end

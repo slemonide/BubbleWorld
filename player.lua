@@ -2,6 +2,15 @@ function hypot(dx, dy)
 	return math.sqrt(dx^2 + dy^2)
 end
 
+-- Removes an item from the table
+function remove_item(table, item)
+	for k, i in ipairs(table) do
+		if i == item then
+			table.remove(table, k)
+		end
+	end
+end
+
 function global_to_local(x, y, origin_x, origin_y)
 	local local_x = x - origin_x
 	local local_y = origin_y - y
