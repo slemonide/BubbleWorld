@@ -38,9 +38,9 @@ function love.load()
 end
 
 function love.update(dt)
-	world:update(dt)
+	world:update(ITER_TIME)
 
-	continuous_controls(dt)
+	continuous_controls(ITER_TIME)
 
 	if autoExplore then
 		if exploreTime >= exploreTimeMin then
