@@ -2,17 +2,15 @@
 require("player")
 require("controls")
 
-K_CONSTANT = 6.674 * 10^-11 * 10^11
+G_CONSTANT = 6.674 * 10^-11 * 10^11
 MIN_DISTANCE = 3 * 10^3
 GEN_DISTANCE = 10^5
 RADIUS = 300 -- Controls the size of the bubbles
 DENSITY = 5
-SPEED = MIN_DISTANCE * 10^2 -- Controls the initial speed of the bubbles
-TRAITS = 3 -- Number of traits each bubble has
+SPEED = MIN_DISTANCE * 10^20 -- Controls the initial speed of the bubbles
 ITER_TIME = 10^-2 -- [seconds] Controls the precision of the simulation. The smaller the number, the more precise simulation is.
-CHARGE_MIN = 10^10
-CHARGE_MAX_MINUS_MIN = 10^10
-MIN_COLLISIONS = 200 -- Number of collisions before bubbles are connected by a poligon
+DENSITY_MIN = 10^10
+DENSITY_MAX_MINUS_MIN = 10^10
 
 function love.load()
 	math.randomseed(os.time())
@@ -79,27 +77,11 @@ function love.update(dt)
 			end
 			if createBubble then
 				bubble.color = {math.random(100) + 100, math.random(100) + 100, math.random(100) + 100}
-				bubble.traits = {}
-				trait_iterator = 0
-				while trait_iterator <= TRAITS do
-					local charge_type
-					local random_number = math.random(3)
-					if random_number == 1 then
-						charge_type = 1
-					elseif random_number == 2 then
-						charge_type = -1
-					else
-						charge_type = 0
-					end
-					local charge = (math.random(CHARGE_MAX_MINUS_MIN) + CHARGE_MIN) * charge_type
-					table.insert(bubble.traits, charge)
-					trait_iterator = trait_iterator + 1
-				end
+				bubble.mass = math.random(DENSITY_MAX_MINUS_MIN) + DENSITY_MIN
 				bubble.velocity = {
 					x = math.random(SPEED) - SPEED / 2,
 					y = math.random(SPEED) - SPEED / 2
 				}
-				bubble.collisions = 0
 
 				bubble.body = love.physics.newBody(world, bubble.pos.x, bubble.pos.y, "dynamic")
 				bubble.shape = love.physics.newCircleShape(RADIUS)
@@ -119,14 +101,11 @@ function love.update(dt)
 						local dy = anotherBubble.pos.y - bubble.pos.y
 
 						local distance = hypot(dx, dy)
-						for k, trait_mass in ipairs(bubble.traits) do
-							acceleration.x = acceleration.x + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dx / distance^3
-							acceleration.y = acceleration.y + K_CONSTANT * anotherBubble.traits[k] * trait_mass * dy / distance^3
-						end
 						if collision(distance) then
-							bubble.collisions = bubble.collisions + 1
-							anotherBubble.collisions = anotherBubble.collisions + 1
+							--table.remove(objects, j)
 						end
+						acceleration.x = acceleration.x + G_CONSTANT * anotherBubble.mass * dx / distance^3
+						acceleration.y = acceleration.y + G_CONSTANT * anotherBubble.mass * dy / distance^3
 					end
 				end
 				bubble.body:applyForce(acceleration.x, acceleration.y)
