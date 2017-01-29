@@ -2,9 +2,9 @@
 require("player")
 require("controls")
 
-G_CONSTANT = 6.674 * 10^-11 * 10^11
-MIN_DISTANCE = 3 * 10^3
-GEN_DISTANCE = 10^5
+G_CONSTANT = 10^3
+MIN_DISTANCE = 5 * 10^3
+GEN_DISTANCE = 10^4
 RADIUS = 300 -- Controls the size of the bubbles
 DENSITY = 5
 SPEED = MIN_DISTANCE * 10^20 -- Controls the initial speed of the bubbles
